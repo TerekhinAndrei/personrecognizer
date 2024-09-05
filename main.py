@@ -4,32 +4,32 @@ from deepface import DeepFace
 from queue import Queue
 import numpy as np
 
-# Глобальная переменная для хранения текущего кадра
-frame_queue = Queue(maxsize=10)  # Ограничение на размер очереди для управления памятью
+# Global variable for storing the current frame
+frame_queue = Queue(maxsize=10)  # Limit on the queue size to manage memory
 result_queue = Queue()
 current_results = []
 
 def analyze_frame():
-    temp_path = '/tmp/temp_frame.jpg'  # Измените путь в зависимости от вашей ОС
+    temp_path = '/tmp/temp_frame.jpg'  # Change the path according to your OS
     while True:
         if not frame_queue.empty():
             frame = frame_queue.get()
 
-            # Уменьшение разрешения для анализа
+            # Resize the frame for analysis
             frame_resized = cv2.resize(frame, (640, 480))
             cv2.imwrite(temp_path, frame_resized)
             
             try:
-                # Выполнение анализа с использованием DeepFace
+                # Perform analysis using DeepFace
                 analysis = DeepFace.analyze(img_path=temp_path, actions=['gender', 'age'], enforce_detection=False)
                 
-                # Фильтрация и форматирование результата анализа
+                # Filter and format the analysis result
                 gender_result = []
                 age_result = None
                 for result in analysis:
                     if 'gender' in result:
                         gender = result['gender']
-                        # Получение пола с максимальной уверенностью
+                        # Get the gender with the highest confidence
                         max_gender = max(gender.items(), key=lambda x: x[1])
                         gender_result.append(f"Gender: {max_gender[0]} ({max_gender[1]:.2f})")
                     
@@ -37,7 +37,7 @@ def analyze_frame():
                         age = result['age']
                         age_result = f"Age: {age}"
                 
-                # Сохранение только наиболее уверенного пола и возраста
+                # Save only the most confident gender and age
                 filtered_results = []
                 if gender_result:
                     filtered_results.append(max(gender_result, key=lambda x: float(x.split('(')[-1].split(')')[0])))
@@ -46,22 +46,22 @@ def analyze_frame():
                 
                 result_queue.put(filtered_results)
             except Exception as e:
-                result_queue.put([f"Ошибка анализа: {e}"])
+                result_queue.put([f"Analysis error: {e}"])
 
 def create_black_background(width, height):
     return np.zeros((height, width, 3), dtype=np.uint8)
 
 def main():
-    global current_results  # Объявляем, что current_results - глобальная переменная
+    global current_results  # Declare that current_results is a global variable
     cap = cv2.VideoCapture(0)
 
-    # Создание окна и установка его в режим изменения размеров
+    # Create a window and set it to resize mode
     cv2.namedWindow('Video', cv2.WINDOW_NORMAL)
     window_width = 640
     window_height = 480
     cv2.resizeWindow('Video', window_width, window_height)
 
-    # Получение размеров камеры
+    # Get camera dimensions
     ret, frame = cap.read()
     if not ret:
         print("Error: Could not read frame.")
@@ -73,7 +73,7 @@ def main():
     font_color = (0, 255, 0)
     font_thickness = 2
 
-    # Создание и запуск потока для анализа
+    # Create and start a thread for analysis
     analysis_thread = threading.Thread(target=analyze_frame, daemon=True)
     analysis_thread.start()
 
@@ -83,7 +83,7 @@ def main():
             print("Error: Could not read frame.")
             break
 
-        # Изменение размера кадра для отображения с сохранением соотношения сторон
+        # Resize the frame for display while maintaining aspect ratio
         if frame_width > frame_height:
             new_width = window_width
             new_height = int((window_width / frame_width) * frame_height)
@@ -92,29 +92,29 @@ def main():
             new_width = int((window_height / frame_height) * frame_width)
 
         frame_resized = cv2.resize(frame, (new_width, new_height))
-        # Создание черного фона для центрирования изображения
+        # Create a black background for centering the image
         background = create_black_background(window_width, window_height)
         y_offset = (window_height - new_height) // 2
         x_offset = (window_width - new_width) // 2
         background[y_offset:y_offset + new_height, x_offset:x_offset + new_width] = frame_resized
 
-        # Попытка добавления кадра в очередь для анализа
-        if frame_queue.qsize() < 10:  # Проверка размера очереди
+        # Try adding the frame to the analysis queue
+        if frame_queue.qsize() < 10:  # Check queue size
             frame_queue.put(frame)
 
-        # Получение результатов анализа из очереди, если они есть
+        # Get analysis results from the queue if available
         if not result_queue.empty():
             current_results = result_queue.get()
 
-        # Отображение текста из результатов анализа
+        # Display text from the analysis results
         y0, dy = 30, 30
         with result_queue.mutex:
             for i, text in enumerate(current_results):
                 cv2.putText(background, text, (10, y0 + i * dy), font, font_scale, font_color, font_thickness, cv2.LINE_AA)
 
-        # Отображение видео
+        # Display video
         cv2.imshow('Video', background)
-        if cv2.waitKey(1) & 0xFF == 27:  # Код клавиши 'Esc' - 27
+        if cv2.waitKey(1) & 0xFF == 27:  # Esc key code - 27
             break
 
     cap.release()
